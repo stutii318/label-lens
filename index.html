@@ -170,7 +170,7 @@ footer{padding:30px 5vw;text-align:center;font-size:13px;color:var(--mute)}
   <div class="up">
     <h2 style="margin-bottom:16px">Scan your <em>label</em></h2>
     <div class="drop" id="drop" tabindex="0" role="button" aria-label="Upload a photo of an ingredient label">
-      <span class="cam">📸</span><b>Drop a label photo here</b><span>or tap to choose an image. It stays on your device.</span>
+      <span class="cam">📸</span><b>Drop a label photo here</b><span>or tap to choose an image. Crop to just the ingredient list, flat and well lit, for best results.</span>
       <input type="file" id="file" accept="image/*" hidden>
     </div>
     <div class="chips" id="cats" role="group" aria-label="Product type"></div>
@@ -213,11 +213,15 @@ const DB=[
 ["tocopherol","vitamin e","antioxidant",0,0,0,"Antioxidant that also protects the formula."],
 ["cetearyl alcohol","","emulsifier",0,0,0,"A fatty alcohol. It is not drying."],
 ["alcohol denat","denatured alcohol,sd alcohol,alcohol","solvent",2,0,0,"Drying and irritating for many skin types."],
-["mineral oil","paraffinum liquidum,petrolatum","emollient",0,0,1,"Petroleum-derived. Non-irritating but not renewable."],
+["mineral oil","paraffinum liquidum,petrolatum,light liquid paraffin,liquid paraffin","emollient",0,0,1,"Petroleum-derived. Non-irritating but not renewable."],
 ["dmdm hydantoin","","preservative",2,1,0,"Releases small amounts of formaldehyde. Common allergen."],
 ["coco-glucoside","","cleanser",0,0,0,"Mild, plant-derived cleanser."],
 ["oat extract","avena sativa kernel extract,colloidal oatmeal","soothing",0,0,0,"Calms irritated skin."],
-["aloe","aloe vera,aloe barbadensis leaf juice","soothing",0,0,0,"Soothing and hydrating."]
+["aloe","aloe vera,aloe barbadensis leaf juice","soothing",0,0,0,"Soothing and hydrating."],
+["urea","carbamide","humectant",0,0,0,"Hydrates at low strength and softens rough skin at 10% or more. Can sting on broken skin."],
+["lactic acid","","exfoliating acid",1,0,0,"A gentle AHA that smooths skin. At 10% it can sting and raise sun sensitivity, so use sunscreen."],
+["propylene glycol","","humectant",1,0,0,"Helps other ingredients absorb. A known contact-allergy trigger for some people and can sting."],
+["cream base","","base",0,0,0,"The label doesn't say what the base contains."]
 ];
 const SAMPLES=[
 {n:"Oat & Ceramide Cream",c:"moisturizer",p:"₹450",l:"Water, Glycerin, Ceramide NP, Oat Extract, Cetearyl Alcohol, Niacinamide, Tocopherol, Hyaluronic Acid"},
@@ -226,7 +230,9 @@ const SAMPLES=[
 {n:"Gentle Coco Cleanser",c:"cleanser",p:"₹300",l:"Water, Coco-Glucoside, Glycerin, Aloe, Phenoxyethanol"},
 {n:"Soft Oat Face Wash",c:"cleanser",p:"₹280",l:"Water, Coco-Glucoside, Oat Extract, Glycerin, Phenoxyethanol"},
 {n:"Mineral Shield SPF 30",c:"sunscreen",p:"₹550",l:"Zinc Oxide, Water, Glycerin, Tocopherol, Cetearyl Alcohol, Shea Butter"},
-{n:"Sheer Mineral Tint SPF 40",c:"sunscreen",p:"₹620",l:"Titanium Dioxide, Zinc Oxide, Water, Glycerin, Dimethicone, Tocopherol"}
+{n:"Sheer Mineral Tint SPF 40",c:"sunscreen",p:"₹620",l:"Titanium Dioxide, Zinc Oxide, Water, Glycerin, Dimethicone, Tocopherol"},
+{n:"Urea 10% Repair Cream (paraben-free)",c:"moisturizer",p:"₹420",l:"Water, Urea, Lactic Acid, Glycerin, Mineral Oil, Cetearyl Alcohol, Phenoxyethanol, Tocopherol"},
+{n:"Urea & Ceramide Barrier Cream",c:"moisturizer",p:"₹480",l:"Water, Urea, Glycerin, Ceramide NP, Shea Butter, Cetearyl Alcohol, Hyaluronic Acid, Phenoxyethanol"}
 ];
 const DEMO="Ingredients: Water, Glycerin, Cyclopentasiloxane, Mineral Oil, Methylparaben, Propylparaben, Fragrance, Polyethylene, Phenoxyethanol, Cetearyl Alcohol, BHT, Acrylates Copolymer";
 const $=s=>document.querySelector(s);
@@ -234,12 +240,19 @@ let cat="any", saved=new Set();
 const KEY=new Map(); DB.forEach((d,i)=>{[d[0],...d[1].split(",").filter(Boolean)].forEach(k=>KEY.set(k,i))});
 
 function lev(a,b){const m=[...Array(b.length+1).keys()];for(let i=1;i<=a.length;i++){let p=m[0];m[0]=i;for(let j=1;j<=b.length;j++){const t=m[j];m[j]=Math.min(m[j]+1,m[j-1]+1,p+(a[i-1]===b[j-1]?0:1));p=t}}return m[b.length]}
-function find(tok){if(KEY.has(tok))return KEY.get(tok);let best=-1,bd=99;for(const [k,i] of KEY){if(Math.abs(k.length-tok.length)>3)continue;const d=lev(tok,k);if(d<bd){bd=d;best=i}}return bd<=Math.max(1,Math.floor(tok.length*.2))?best:-1}
+function find(tok){if(KEY.has(tok))return KEY.get(tok);if(tok.length<5)return -1;let best=-1,bd=99;for(const [k,i] of KEY){if(Math.abs(k.length-tok.length)>3)continue;const d=lev(tok,k);if(d<bd){bd=d;best=i}}return bd<=Math.max(1,Math.floor(tok.length*.2))?best:-1}
+function hit(s){const w=s.split(" ");for(let n=Math.min(4,w.length);n>0;n--){const k=w.slice(0,n).join(" ");const i=find(k);if(i>=0)return{i,tok:k}}return{i:-1,tok:w.slice(0,3).join(" ")}}
 function parse(text){
-  const t=text.replace(/^[\s\S]*?ingredients?\s*[:\-]/i,"").replace(/\n/g,", ").replace(/[•·;|]/g,",");
-  return t.split(",").map(s=>s.toLowerCase().replace(/\(.*?\)/g,"").replace(/[^a-z0-9 \-]/g," ").replace(/\s+/g," ").trim()).filter(s=>s.length>2).map(tok=>({tok,i:find(tok)}));
+  const t=text.replace(/^[\s\S]*?(ingredients?|composition)\s*[:\-]/i,"");
+  const rows=(t.match(/\d\s*%/g)||[]).length>=2||(t.match(/\.{3,}/g)||[]).length>=2;
+  return t.split(rows?/[\n•·]+/:/[\n,;•·|]+/).map(raw=>{
+    let s=raw.toLowerCase().replace(/\(.*?\)/g,"");
+    const m=s.match(/(\d+(?:\.\d+)?)\s*%/);const pct=m&&+m[1]<=100?+m[1]:null;
+    s=s.replace(/[^a-z0-9 \-]/g," ").replace(/\s+/g," ").trim().replace(/^([a-z] )+/,"");
+    return{s,pct}}).filter(x=>x.s.length>2&&!/^(composition|ingredients?|preservat\w*|actives?|excipients?)$/.test(x.s)).map(x=>({...hit(x.s),pct:x.pct}));
 }
-function scores(items){let s=0,h=0,e=0;items.forEach(x=>{if(x.i>=0){s+=DB[x.i][3];h+=DB[x.i][4];e+=DB[x.i][5]}});
+const LIM={methylparaben:.4,propylparaben:.14,butylparaben:.14};
+function scores(items){let s=0,h=0,e=0;items.forEach(x=>{if(x.i>=0){const d=DB[x.i];const w=LIM[d[0]]&&x.pct!=null&&x.pct<=LIM[d[0]]?.5:1;s+=d[3];h+=d[4]*w;e+=d[5]}});
   const c=v=>Math.max(0,Math.min(100,v));const sk=c(100-s*9),ho=c(100-h*14),ec=c(100-e*12);return{sk,ho,ec,all:Math.round((sk+ho+ec)/3)}}
 const col=v=>v>=75?"var(--ok)":v>=50?"var(--mid)":"var(--bad)";
 function vec(items){const m=new Map();items.forEach(x=>{const k=x.i>=0?DB[x.i][0]:x.tok;m.set(k,1)});return m}
@@ -247,7 +260,7 @@ function cos(a,b){let d=0;a.forEach((_,k)=>{if(b.has(k))d++});return d/Math.sqrt
 
 function dial(label,v){const r=34,c=2*Math.PI*r;return `<div class="pin"><div class="dial"><svg width="84" height="84" viewBox="0 0 84 84"><circle cx="42" cy="42" r="${r}" fill="none" stroke="#fff" stroke-width="9"/><circle class="ring" cx="42" cy="42" r="${r}" fill="none" stroke="${col(v)}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c}" data-to="${c*(1-v/100)}" transform="rotate(-90 42 42)"/></svg><div><div class="n">${v}</div><b>${label}</b></div></div></div>`}
 function ingPin(x){const d=DB[x.i];const w=Math.max(d[3]>=2?1:0,d[4],d[5]>=2?2:d[5]);
-  const tags=[d[3]>=2?'<span class="tag r">Irritant</span>':d[3]==1?'<span class="tag y">May sting</span>':'',d[4]==2?'<span class="tag r">Hormone flag</span>':d[4]==1?'<span class="tag y">Hormone: limited</span>':'',d[5]==2?'<span class="tag r">Hurts planet</span>':d[5]==1?'<span class="tag y">Planet caution</span>':''].join("");
+  const tags=[x.pct!=null?`<span class="tag">${x.pct}%</span>`:"",LIM[d[0]]&&x.pct!=null?(x.pct<=LIM[d[0]]?'<span class="tag g">Under EU limit</span>':'<span class="tag r">Over EU limit</span>'):"",d[3]>=2?'<span class="tag r">Irritant</span>':d[3]==1?'<span class="tag y">May sting</span>':'',d[4]==2?'<span class="tag r">Hormone flag</span>':d[4]==1?'<span class="tag y">Hormone: limited</span>':'',d[5]==2?'<span class="tag r">Hurts planet</span>':d[5]==1?'<span class="tag y">Planet caution</span>':''].join("");
   return `<div class="pin" tabindex="0"><h3>${d[0]}</h3><small>${d[2]}</small><div>${tags}</div><div class="note">${d[6]}</div></div>`}
 function altPin(a,base,sim){const s=a.sc;const up=(k)=>{const dv=s[k]-base[k];return dv>0?`<span class="tag g">${k==="sk"?"Skin":k==="ho"?"Hormone":"Planet"} +${dv}</span>`:""};
   return `<div class="pin" tabindex="0"><button class="heart" data-n="${a.n}" aria-label="Save ${a.n}">♥</button><small>${a.p} · ${Math.round(sim*100)}% similar formula</small><h3 style="margin-top:4px;padding-right:40px">${a.n}</h3><div>${up("sk")}${up("ho")}${up("ec")}</div><div class="note">${a.l}</div></div>`}
@@ -256,7 +269,7 @@ function analyze(text){
   const items=parse(text);const g=$("#grid");
   if(!items.length){g.innerHTML='<div class="pin"><h3>No ingredients found</h3><small>Check the text is a comma-separated list, then try again.</small></div>';return}
   const sc=scores(items);const flagged=items.filter(x=>x.i>=0&&(DB[x.i][3]||DB[x.i][4]||DB[x.i][5]));const clean=items.filter(x=>x.i>=0&&!flagged.includes(x));const unk=items.filter(x=>x.i<0);
-  const mood=sc.all>=80?["😇","Squeaky clean. Nothing suspicious here."]:sc.all>=55?["🕵️",`${flagged.length} suspects in the lineup. Mostly fine.`]:["🚨",`${flagged.length} suspects found. Let's look at swaps.`];
+  const mood=sc.all>=80&&!flagged.length?["😇","Squeaky clean. Nothing suspicious here."]:sc.all>=55?["🕵️",`${flagged.length} suspects in the lineup. Mostly fine.`]:["🚨",`${flagged.length} suspects found. Let's look at swaps.`];
   let h=`<div class="pin mascot"><span class="big">${mood[0]}</span>${mood[1]}<br><small>Informational only, not medical advice.</small></div>`;
   h+=dial("Skin",sc.sk)+dial("Hormone",sc.ho)+dial("Planet",sc.ec);
   if(flagged.length){h+='<div class="sec">Suspects</div>'+flagged.map(ingPin).join("")}
@@ -271,12 +284,18 @@ function analyze(text){
 }
 function syncHearts(){document.querySelectorAll(".heart").forEach(b=>b.classList.toggle("on",saved.has(b.dataset.n)));$("#savedBtn").textContent=`Saved (${saved.size})`}
 
+async function prep(file){try{
+  const im=await createImageBitmap(file),k=Math.min(3,Math.max(1,2000/im.width)),c=document.createElement("canvas");c.width=im.width*k;c.height=im.height*k;
+  const x=c.getContext("2d");x.drawImage(im,0,0,c.width,c.height);const d=x.getImageData(0,0,c.width,c.height),p=d.data;let lo=255,hi=0;
+  for(let i=0;i<p.length;i+=4){const g=.3*p[i]+.59*p[i+1]+.11*p[i+2];p[i]=p[i+1]=p[i+2]=g;if(g<lo)lo=g;if(g>hi)hi=g}
+  const f=255/Math.max(1,hi-lo);for(let i=0;i<p.length;i+=4)p[i]=p[i+1]=p[i+2]=Math.max(0,Math.min(255,(p[i]-lo)*f));
+  x.putImageData(d,0,0);return await new Promise(r=>c.toBlob(r,"image/png"))}catch(e){return file}}
 async function ocr(file){
   const g=$("#grid");const url=URL.createObjectURL(file);
   g.innerHTML=`<div class="pin img"><div class="scan-l"><img src="${url}" alt="Your label"></div></div><div class="pin"><h3>Reading label…</h3><div class="prog"><i id="pb"></i></div></div>`;
   try{
     const w=await Tesseract.createWorker("eng",1,{logger:m=>{if(m.status==="recognizing text")$("#pb").style.width=Math.round(m.progress*100)+"%"}});
-    const {data}=await w.recognize(file);await w.terminate();
+    const {data}=await w.recognize(await prep(file));await w.terminate();
     $("#txt").value=data.text.trim();$("#txt").classList.add("show");$("#go").style.display="inline-block";
     analyze(data.text);
   }catch(e){g.innerHTML='<div class="pin"><h3>Could not read the image</h3><small>Try a sharper, well-lit photo, or paste the text instead.</small></div>'}
